@@ -21,6 +21,7 @@
 #import "CBLHTTPLogic.h"
 #import "CBLTrustCheck.h"
 #import "CBLCoreBridge.h"
+#import "CBLDatabase+Internal.h"
 #import "CBLStatus.h"
 #import "CBLReplicatorConfiguration.h"  // for the options constants
 #import "CBLReplicator+Internal.h"
@@ -71,6 +72,7 @@ struct PendingWrite {
     std::atomic<C4Socket*> _c4socket;
     CFHTTPMessageRef _httpResponse;
     id _keepMeAlive;
+    C4Database* _c4db;
 
     NSInputStream* _in;
     NSOutputStream* _out;
@@ -114,7 +116,11 @@ static void doOpen(C4Socket* s, const C4Address* addr, C4Slice optionsFleece, vo
             c4socket_closed(s, {LiteCoreDomain, kC4NetErrInvalidURL});
             return;
         }
-        auto socket = [[CBLWebSocket alloc] initWithURL: url c4socket: s options: optionsFleece];
+        CBLReplicator* repl = (__bridge CBLReplicator*)context;
+        auto socket = [[CBLWebSocket alloc] initWithURL: url
+                                               c4socket: s
+                                                options: optionsFleece
+                                                   c4db: repl.config.database.c4db];
         s->nativeHandle = (__bridge void*)socket;
         socket->_keepMeAlive = socket;          // Prevents dealloc until doDispose is called
         [socket start];
@@ -137,11 +143,12 @@ static void doDispose(C4Socket* s) {
     [(__bridge CBLWebSocket*)s->nativeHandle dispose];
 }
 
-- (instancetype) initWithURL: (NSURL*)url c4socket: (C4Socket*)c4socket options: (slice)options {
+- (instancetype) initWithURL: (NSURL*)url c4socket: (C4Socket*)c4socket options: (slice)options c4db: (C4Database*)db {
     self = [super init];
     if (self) {
         _c4socket = c4socket;
         _options = AllocedDict(options);
+        _c4db = db;
 
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL: url];
         request.HTTPShouldHandleCookies = NO;
@@ -315,7 +322,13 @@ static void doDispose(C4Socket* s) {
     // Construct the HTTP request:
     for (Dict::iterator header(_options[kC4ReplicatorOptionExtraHeaders].asDict()); header; ++header)
         _logic[slice2string(header.keyString())] = slice2string(header.value().asString());
-    slice cookies = _options[kC4ReplicatorOptionCookies].asString();
+    
+    nsstring_slice scheme(_logic.URL.scheme);
+    nsstring_slice host(_logic.URL.host);
+    nsstring_slice path(_logic.URL.path);
+
+    C4Error error;
+    alloc_slice cookies = c4db_getCookies(_c4db, { scheme, host, _logic.port, path, }, &error);
     if (cookies)
         [_logic addValue: cookies.asNSString() forHTTPHeaderField: @"Cookie"];
 
@@ -390,6 +403,13 @@ static void doDispose(C4Socket* s) {
         NSMutableDictionary* newHeaders = [headers mutableCopy];
         newHeaders[@"Set-Cookie"] = [cookie componentsSeparatedByString: @", "];
         headers = newHeaders;
+        
+        NSURL *request =  CFBridgingRelease(CFHTTPMessageCopyRequestURL(httpResponse));
+        C4Error error;
+        nsstring_slice cookieSlice(cookie);
+        nsstring_slice hostSlice(request.host);
+        nsstring_slice pathSlice(request.path);
+        c4db_setCookie(_c4db, cookieSlice, hostSlice, pathSlice, &error);
     }
     NSInteger httpStatus = _logic.httpStatus;
     Encoder enc;
