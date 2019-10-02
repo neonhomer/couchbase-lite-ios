@@ -143,7 +143,10 @@ static void doDispose(C4Socket* s) {
     [(__bridge CBLWebSocket*)s->nativeHandle dispose];
 }
 
-- (instancetype) initWithURL: (NSURL*)url c4socket: (C4Socket*)c4socket options: (slice)options c4db: (C4Database*)db {
+- (instancetype) initWithURL: (NSURL*)url
+                    c4socket: (C4Socket*)c4socket
+                     options: (slice)options
+                        c4db: (C4Database*)db {
     self = [super init];
     if (self) {
         _c4socket = c4socket;
