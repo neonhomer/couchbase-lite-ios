@@ -816,7 +816,7 @@ static C4DatabaseConfig c4DatabaseConfig (CBLDatabaseConfiguration *config) {
 }
 
 - (void) freeC4DB {
-    c4db_free(_c4db);
+    c4db_release(_c4db);
     _c4db = nil;
 }
 
@@ -888,8 +888,8 @@ static C4DatabaseConfig c4DatabaseConfig (CBLDatabaseConfiguration *config) {
             return YES;
         }
         @finally {
-            c4doc_free(curDoc);
-            c4doc_free(newDoc);
+            c4doc_release(curDoc);
+            c4doc_release(newDoc);
         }
     }
 }

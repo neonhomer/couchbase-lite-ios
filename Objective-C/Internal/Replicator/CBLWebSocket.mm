@@ -688,6 +688,7 @@ static BOOL checkHeader(NSDictionary* headers, NSString* header, NSString* expec
     [_out close];
     _in = nil;
     _out = nil;
+    _c4db = nil;
 }
 
 @end

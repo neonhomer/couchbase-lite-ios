@@ -81,7 +81,7 @@ using namespace fleece;
         }
         
         if (!includeDeleted && (doc->flags & kDocDeleted) != 0) {
-            c4doc_free(doc);
+            c4doc_release(doc);
             return nil;
         }
         
